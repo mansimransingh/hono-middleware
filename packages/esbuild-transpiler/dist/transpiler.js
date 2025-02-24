@@ -1,0 +1,35 @@
+// src/transpiler.ts
+import { createMiddleware } from "hono/factory";
+var esbuildTranspiler = (options) => {
+  const esbuild = options?.esbuild;
+  return createMiddleware(async (c, next) => {
+    await next();
+    if (esbuild) {
+      const url = new URL(c.req.url);
+      const extensions = options?.extensions ?? [".ts", ".tsx"];
+      if (extensions.every((ext) => !url.pathname.endsWith(ext))) {
+        return;
+      }
+      const script = await c.res.text();
+      const transformOptions = options?.transformOptions ?? {};
+      try {
+        const { code } = await esbuild.transform(script, {
+          loader: "tsx",
+          ...transformOptions
+        });
+        c.res = c.body(code);
+        c.res.headers.set("content-type", options?.contentType ?? "text/javascript");
+        c.res.headers.delete("content-length");
+      } catch (ex) {
+        console.warn("Error transpiling " + url.pathname + ": " + ex);
+        c.res = new Response(script, {
+          status: 500,
+          headers: { "content-type": options?.contentType ?? "text/javascript" }
+        });
+      }
+    }
+  });
+};
+export {
+  esbuildTranspiler
+};
